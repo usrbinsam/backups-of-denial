@@ -7,6 +7,7 @@ This runs as a separate process from the game; it is not a mod. You won't be ban
 
 ## Setup
 
+- Download from [Releases](https://github.com/usrbinsam/backups-of-denial/releases)
 - Create the config file: `C:\Users\YOUR USERNAME\.backups-of-denial.toml`
 
 ```toml
@@ -15,5 +16,7 @@ save_game_dir = '''C:\Users\YOUR USERNAME\OneDrive\Documents\NBGI\DARK SOULS REM
 ```
 
 - Start the executable: `backups-of-denial.exe`
+    - :exclamation: You will likely get a "Windows SmartScreen" alert for the first run.
+      Click **More Info** then **Run anyway**.
 - Start playing
 

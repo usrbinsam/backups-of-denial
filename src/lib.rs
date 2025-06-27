@@ -1,12 +1,14 @@
+pub mod config;
 pub mod watcher;
 
 use jiff::Zoned;
 use std::os::windows::prelude::OpenOptionsExt;
 use std::path::PathBuf;
 use std::{fs, io};
-pub use watcher::*;
 use windows::Win32::Storage::FileSystem::{FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE};
 
+pub use config::*;
+pub use watcher::*;
 pub struct WatcherBackupHandler {
     pub backup_dir: PathBuf,
 }

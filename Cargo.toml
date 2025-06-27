@@ -1,0 +1,9 @@
+[package]
+name = "backups-of-denial"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jiff = "0.2.15"
+notify = { version = "8.0.0", default-features = false }
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_IO"] }

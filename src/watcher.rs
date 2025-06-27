@@ -37,7 +37,7 @@ impl<C: WatcherCallback> Watcher<C> {
             .encode_wide()
             .chain(Some(0))
             .collect();
-        let mut buffer: [u8; 4096] = [0; 4096];
+        let mut buffer: [u8; 1024] = [0; 1024];
         let mut bytes_received = 0u32;
         let mut changes: Vec<WatchEvent> = vec![];
 

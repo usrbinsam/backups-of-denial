@@ -7,6 +7,8 @@ use toml;
 pub struct Config {
     pub backup_dir: String,
     pub save_game_dir: String,
+    pub encryption_key: Option<String>,
+    pub verify_bnd4: bool,
 }
 
 impl Config {

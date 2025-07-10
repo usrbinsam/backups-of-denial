@@ -1,7 +1,9 @@
 pub mod config;
 pub mod watcher;
 
+use bnd4::{BND4Error, BND4File, CipherMode};
 use jiff::Zoned;
+use std::fs::File;
 use std::os::windows::prelude::OpenOptionsExt;
 use std::path::PathBuf;
 use std::{fs, io};
@@ -11,16 +13,32 @@ pub use config::*;
 pub use watcher::*;
 pub struct WatcherBackupHandler {
     pub backup_dir: PathBuf,
+    encryption_key: Option<Vec<u8>>,
+    verify_bnd4: bool,
 }
 
+#[derive(Debug)]
+pub enum VerifyError {
+    Io(io::Error),
+    BND4(BND4Error),
+}
 impl WatcherBackupHandler {
-    pub fn new(backup_dir: PathBuf) -> Self {
+    pub fn new(backup_dir: PathBuf, encryption_key: Option<String>, verify_bnd4: bool) -> Self {
         if !backup_dir.exists() {
             println!("Creating backup dir: {:?}", backup_dir);
             fs::create_dir(&backup_dir).unwrap();
         }
 
-        Self { backup_dir }
+        let mut decoded = None;
+        if encryption_key.is_some() {
+            decoded = Some(hex::decode(&encryption_key.unwrap()).expect("Invalid decryption key"));
+        }
+
+        Self {
+            backup_dir,
+            encryption_key: decoded,
+            verify_bnd4,
+        }
     }
     fn generate_backup_path(&self, path: &PathBuf) -> Option<PathBuf> {
         let file_stem = path.file_stem()?.to_string_lossy();
@@ -49,7 +67,26 @@ impl WatcherBackupHandler {
 
         let mut dst = fs::File::create(&backup_path).expect("unable to create backup file");
         io::copy(&mut src, &mut dst).expect("failed to copy file contents");
+        if self.verify_bnd4 {
+            self.verify(&backup_path)
+                .expect("backup file appears corrupt!");
+        }
         Some(backup_path)
+    }
+
+    pub fn verify(&self, path: &PathBuf) -> Result<(), VerifyError> {
+        let mut file = File::open(path).map_err(VerifyError::Io)?;
+        let mut bnd4data = BND4File::from_file(&mut file).map_err(VerifyError::BND4)?;
+
+        for entry in bnd4data.entries.iter_mut() {
+            if self.encryption_key.is_some() {
+                entry
+                    .decrypt(CipherMode::CBC, self.encryption_key.as_ref().unwrap())
+                    .map_err(VerifyError::BND4)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -80,6 +117,8 @@ pub mod tests {
     use crate::WatcherBackupHandler;
     use std::env;
     use std::fs;
+    use std::path::PathBuf;
+
     #[test]
     fn test_watcher_generate_backup_path() {
         let tmp = env::temp_dir();
@@ -87,7 +126,7 @@ pub mod tests {
         let parent = tmp.to_str().unwrap().to_string();
         let child = test_path.to_str().unwrap().to_string();
 
-        let watcher = WatcherBackupHandler::new(tmp);
+        let watcher = WatcherBackupHandler::new(tmp, None, false);
 
         let v = watcher.generate_backup_path(test_path).unwrap();
         assert!(!v.exists());
@@ -102,7 +141,7 @@ pub mod tests {
         let target_contents = "If I could only be so grossly incandescent!";
         fs::write(test_path, target_contents).expect("failed to write to test file");
 
-        let watcher = WatcherBackupHandler::new(tmp);
+        let watcher = WatcherBackupHandler::new(tmp, None, false);
         watcher.backup(test_path);
 
         let found = fs::read_dir(&watcher.backup_dir.canonicalize().unwrap())
@@ -114,5 +153,18 @@ pub mod tests {
 
         let contents = fs::read_to_string(found).unwrap();
         assert_eq!(contents, target_contents);
+    }
+
+    #[test]
+    fn test_verify() {
+        let target = "test/DSR.bnd4";
+        let watcher = WatcherBackupHandler::new(
+            PathBuf::from(env::temp_dir()),
+            Some("0123456789ABCDEFFEDCBA9876543210".into()),
+            true,
+        );
+        watcher
+            .verify(&PathBuf::from(target))
+            .expect("Test file didn't pass verification");
     }
 }

@@ -10,7 +10,11 @@ fn main() {
         return;
     }
     let config = Config::from_file(&config_path);
-    let watcher_handler = WatcherBackupHandler::new(config.backup_dir.parse().unwrap());
+    let watcher_handler = WatcherBackupHandler::new(
+        config.backup_dir.parse().unwrap(),
+        config.encryption_key,
+        config.verify_bnd4,
+    );
     let mut watcher = Watcher::new(config.save_game_dir.parse().unwrap(), watcher_handler);
     println!("watching {} for changes", config.save_game_dir);
     loop {

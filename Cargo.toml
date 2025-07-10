@@ -1,12 +1,12 @@
 [package]
 name = "backups-of-denial"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
 jiff = "0.2.15"
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_IO"] }
 serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.8.23"
+toml = "0.9.1"
 bnd4 = { git = "https://github.com/usrbinsam/bnd4.git" }
 hex = "0.4.3"

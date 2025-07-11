@@ -28,7 +28,7 @@ fn main() {
 
     watcher_handler.prune();
     let mut watcher = Watcher::new(config.save_game_dir.parse().unwrap(), watcher_handler);
-    info!("watching {} for changes ...", config.save_game_dir);
+    info!("watching {:?} for changes ...", config.save_game_dir);
     loop {
         watcher.watch()
     }

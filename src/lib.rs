@@ -4,7 +4,7 @@ pub mod watcher;
 use bnd4::{BND4Error, BND4File, CipherMode};
 use glob::Pattern;
 use jiff::Zoned;
-use log::{debug, info, warn};
+use log::{debug, error, info};
 use std::fs::File;
 use std::os::windows::prelude::OpenOptionsExt;
 use std::path::PathBuf;
@@ -32,12 +32,11 @@ pub enum VerifyError {
 impl WatcherBackupHandler {
     pub fn new(backup_dir: PathBuf, encryption_key: Option<String>, verify_bnd4: bool) -> Self {
         if !backup_dir.exists() {
-            info!("Creating backup dir: {:?}", backup_dir);
+            info!("creating backup dir: {:?}", backup_dir);
             fs::create_dir(&backup_dir).unwrap();
-        } else {
-            info!("Creating backup files in: {:?}", backup_dir);
         }
 
+        info!("backups will be saved in: {:?}", backup_dir);
         let mut decoded = None;
         if encryption_key.is_some() {
             decoded = Some(hex::decode(&encryption_key.unwrap()).expect("Invalid decryption key"));
@@ -61,7 +60,10 @@ impl WatcherBackupHandler {
     pub fn with_retention_options(mut self, duration: Duration, min_backups: usize) -> Self {
         self.retention_duration = Some(duration);
         self.min_backup_count = Some(min_backups);
-        info!("retention duration is: {:?}", duration);
+        info!(
+            "backups will be pruned after {:?} once at least {} backup(s) exist",
+            duration, min_backups
+        );
         self
     }
 
@@ -78,6 +80,9 @@ impl WatcherBackupHandler {
             return None;
         }
 
+        // let game finish writing
+        sleep(Duration::from_millis(200));
+
         if let Some(pattern) = &self.backup_mask {
             debug!("Checking mask: {:?}", pattern);
             if !pattern.matches(&path.to_string_lossy()) {
@@ -88,12 +93,13 @@ impl WatcherBackupHandler {
 
         let backup_path = self.generate_backup_path(path)?;
         if backup_path.exists() {
-            warn!("the backup target already exists!");
+            debug!("the backup target already exists!");
             return None;
         }
         // fs::copy() attempts exclusive access to the file
         let mut retry = 0;
         loop {
+            let mut dst = File::create(&backup_path).expect("unable to create backup file");
             let result = fs::OpenOptions::new()
                 .read(true)
                 .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0)
@@ -113,17 +119,23 @@ impl WatcherBackupHandler {
             }
 
             let mut src = result.unwrap();
-            let mut dst = File::create(&backup_path).expect("unable to create backup file");
             io::copy(&mut src, &mut dst).expect("failed to copy file contents");
+            drop(src);
             break;
         }
 
         if self.verify_bnd4 {
-            self.verify(&backup_path)
-                .expect("backup file appears corrupt!");
+            let result = self.verify(&backup_path);
+            if result.is_err() {
+                error!(
+                    "integrity check failed, this backup file is corrupt: {:?}",
+                    backup_path
+                );
+                panic!("exiting due to integrity check failure");
+            }
         }
 
-        info!("backed up file: {:?}", path);
+        info!("backup created: {:?}", backup_path);
         self.prune();
         Some(backup_path)
     }
@@ -140,7 +152,7 @@ impl WatcherBackupHandler {
             }
         }
 
-        info!("integrity check passed: {:?}", path);
+        debug!("integrity check passed: {:?}", path);
         Ok(())
     }
 
@@ -148,7 +160,7 @@ impl WatcherBackupHandler {
         let duration = match &self.retention_duration {
             Some(d) => d,
             None => {
-                info!("not pruning, retention_duration is not set");
+                debug!("not pruning, retention_duration is not set");
                 return;
             }
         };
@@ -163,12 +175,14 @@ impl WatcherBackupHandler {
             })
             .collect();
 
-        info!("there are {} backups", files.len());
-        if self.min_backup_count.unwrap_or(0) > files.len() {
-            info!("there are not enough backups to start pruning");
+        let min_backups = self.min_backup_count.unwrap_or(0);
+        debug!("there are {} backups", files.len());
+        if min_backups > files.len() {
+            debug!("there are not enough backups to start pruning");
             return;
         }
 
+        let mut remaining = files.len();
         for file in files {
             let age = file
                 .metadata()
@@ -179,9 +193,10 @@ impl WatcherBackupHandler {
                 .unwrap()
                 .as_secs();
 
-            if age > duration.as_secs() {
-                info!("pruning file: {:?}", file);
+            if age > duration.as_secs() && remaining > min_backups {
+                info!("pruning old backup file: {:?}", file);
                 fs::remove_file(file).unwrap();
+                remaining -= 1;
             }
         }
     }
@@ -189,10 +204,17 @@ impl WatcherBackupHandler {
 
 impl WatcherCallback for WatcherBackupHandler {
     fn handle(&mut self, events: &Vec<WatchEvent>) {
+        let mut seen = vec![];
         for event in events {
             debug!("Received event: {:?}", event);
             match event {
                 WatchEvent::Modified(path) => {
+                    let path_str = path.to_str().unwrap();
+                    if seen.contains(&path_str) {
+                        debug!("skipping duplicate event: {:?}", path);
+                        continue;
+                    }
+
                     if path
                         .to_str()
                         .unwrap()
@@ -203,6 +225,7 @@ impl WatcherCallback for WatcherBackupHandler {
                     }
 
                     self.backup(&path);
+                    seen.push(path_str);
                 }
             }
         }

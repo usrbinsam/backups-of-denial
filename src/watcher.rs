@@ -1,3 +1,4 @@
+use log::debug;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
@@ -53,6 +54,7 @@ impl<C: WatcherCallback> Watcher<C> {
             )
             .expect("CreateFileW() failed");
 
+            debug!("waiting for ReadDirectoryChangesW ...");
             ReadDirectoryChangesW(
                 handle,
                 buffer.as_mut_ptr() as *mut c_void,
@@ -71,6 +73,7 @@ impl<C: WatcherCallback> Watcher<C> {
             unsafe { ptr::read_unaligned(cur_offset as *const FILE_NOTIFY_INFORMATION) };
 
         loop {
+            debug!("ReadDirectoryChangesW, cur_offset: {:?}", cur_offset);
             let file_name_len = cur_entry.FileNameLength as usize / 2;
             let encoded_path: &[u16] = unsafe {
                 slice::from_raw_parts(
@@ -84,6 +87,7 @@ impl<C: WatcherCallback> Watcher<C> {
             let changed_path = self.base_dir.join(PathBuf::from(
                 String::from_utf16_lossy(encoded_path).to_string(),
             ));
+            debug!("ReadDirectoryChangesW, changed_path: {:?}", changed_path);
 
             let action = match cur_entry.Action {
                 FILE_ACTION_MODIFIED => WatchEvent::Modified(changed_path),
@@ -92,12 +96,15 @@ impl<C: WatcherCallback> Watcher<C> {
                 }
             };
 
+            debug!("ReadDirectoryChangesW, action: {:?}", action);
             changes.push(action);
 
             if cur_entry.NextEntryOffset == 0 {
+                debug!("ReadDirectoryChangesW, done");
                 break;
             }
 
+            debug!("ReadDirectoryChangesW, next entry");
             unsafe {
                 cur_offset = cur_offset.offset(cur_entry.NextEntryOffset as isize);
                 cur_entry = ptr::read_unaligned(cur_offset as *const FILE_NOTIFY_INFORMATION);
@@ -106,6 +113,8 @@ impl<C: WatcherCallback> Watcher<C> {
 
         if !changes.is_empty() {
             self.callback.handle(&changes);
+        } else {
+            debug!("ReadDirectoryChangesW returned but there were no changes");
         }
     }
 }

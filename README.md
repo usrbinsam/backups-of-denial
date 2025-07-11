@@ -1,12 +1,15 @@
-# Backups of Denial
+# Backups of Denial: Dark Souls Realtime Save Game Backup
 
 This program makes a timestamped copy of your Save file each time the game writes to it.
 If a hacker invader manages to corrupt your game save, you have the opportunity to roll back to a good save file.
 
+The goal here is to always have a fresh copy of a recent game state. The backup location will rapidly fill in
+just a few hours of gameplay.
+
 This runs as a separate process from the game; it is not a mod and therefore does not violate ToS.
 
-Backups of Denial, by default, will check the basic structure of the save file after each backup. If it detects
-a corrupt file, it will exit to prevent copying more corrupt files.
+Backups of Denial checks the basic structure of the save file after each backup. If it detects a corrupt file, it
+stops creating backups to prevent copying over more corrupt files and subsequently pruning good ones.
 
 ## Setup
 
@@ -27,6 +30,17 @@ min_backup_count = 30 # keep a minimum of 30 backups before pruning files older 
     - :exclamation: You will likely get a "Windows SmartScreen" alert for the first run.
       Click **More Info** > **Run anyway**.
 - Start playing
+
+## Troubleshooting
+
+If launching the executable does nothing, its probably crashing due to an invalid config, or a bad config.
+
+You can see the exit reason if you try launching from a command prompt.
+
+## Help
+
+Feel free to open a [GitHub Issue](https://github.com/usrbinsam/backups-of-denial/issues) if you need help or have a
+feature suggestion.
 
 ## TODO
 

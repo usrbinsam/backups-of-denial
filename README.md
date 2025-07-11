@@ -51,7 +51,7 @@ On each start and after each backup, we prune old backups using the configured r
 During testing, I observed two noteworthy quirks:
 
 1. Because we're copying the game file while the game is running, the game might show the "improperly closed game"
-   warning.
+   warning when a backup is restored. This should be expected.
 2. When the game attempts exclusive access while we're copying the source save game, it'll encounter a Share Violation
    from Windows. The game's code seems to handle this gracefully, and simply tries again.
 

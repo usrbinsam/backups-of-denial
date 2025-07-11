@@ -33,7 +33,8 @@ min_backup_count = 30 # keep a minimum of 30 backups before pruning files older 
 
 ## Troubleshooting
 
-If launching the executable does nothing, its probably crashing due to an invalid config, or a bad config.
+If launching the executable does nothing, its probably crashing due to an invalid config, or 
+a missing directory.
 
 You can see the exit reason if you try launching from a command prompt.
 

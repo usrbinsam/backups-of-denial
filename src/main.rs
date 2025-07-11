@@ -2,6 +2,7 @@ use backups_of_denial::Config;
 use backups_of_denial::{Watcher, WatcherBackupHandler};
 use log::{error, info};
 use std::env;
+use std::time::Duration;
 
 fn main() {
     colog::init();
@@ -19,8 +20,13 @@ fn main() {
         config.encryption_key,
         config.verify_bnd4,
     )
-    .with_mask(&config.backup_mask);
+    .with_mask(&config.backup_mask)
+    .with_retention_options(
+        Duration::from_secs(config.retention_minutes * 60),
+        config.min_backup_count,
+    );
 
+    watcher_handler.prune();
     let mut watcher = Watcher::new(config.save_game_dir.parse().unwrap(), watcher_handler);
     info!("watching {} for changes ...", config.save_game_dir);
     loop {

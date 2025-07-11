@@ -10,6 +10,8 @@ pub struct Config {
     pub encryption_key: Option<String>,
     pub verify_bnd4: bool,
     pub backup_mask: String,
+    pub retention_minutes: u64,
+    pub min_backup_count: usize,
 }
 
 impl Config {

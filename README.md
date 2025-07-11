@@ -19,6 +19,8 @@ save_game_dir = '''C:\Users\YOUR USERNAME\OneDrive\Documents\NBGI\DARK SOULS REM
 verify_bnd4 = true # verify backup file integrity
 decryption_key = '0123456789ABCDEFFEDCBA9876543210' # Dark Souls Remastered key, only required if verify_bnd4 = true.
 backup_mask = '*.sl2' # or '*.sl2.overhaul' if using PVP Overhaul Mod
+retention_minutes = 180  # delete backups older than 3 hours
+min_backup_count = 30 # keep a minimum of 30 backups before pruning files older than `retention_minutes`
 ```
 
 - Start the executable: `backups-of-denial.exe`
@@ -28,7 +30,6 @@ backup_mask = '*.sl2' # or '*.sl2.overhaul' if using PVP Overhaul Mod
 
 ## TODO
 
-- Backup retention: oldest backups are not auto-removed.
 - Game Launcher: Wrapper around the Game executable so the watcher can automatically start and stop with the game.
-- Integrity check: validate the backups to make sure they're readable by the game. (done)
 - Sanity check on character data
+- Multiple game support

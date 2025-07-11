@@ -20,6 +20,8 @@ pub struct WatcherBackupHandler {
     encryption_key: Option<Vec<u8>>,
     verify_bnd4: bool,
     backup_mask: Option<Pattern>,
+    retention_duration: Option<Duration>,
+    min_backup_count: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -46,6 +48,8 @@ impl WatcherBackupHandler {
             encryption_key: decoded,
             verify_bnd4,
             backup_mask: None,
+            retention_duration: None,
+            min_backup_count: None,
         }
     }
     pub fn with_mask(mut self, mask: &str) -> Self {
@@ -54,11 +58,17 @@ impl WatcherBackupHandler {
         self
     }
 
+    pub fn with_retention_options(mut self, duration: Duration, min_backups: usize) -> Self {
+        self.retention_duration = Some(duration);
+        self.min_backup_count = Some(min_backups);
+        info!("retention duration is: {:?}", duration);
+        self
+    }
+
     fn generate_backup_path(&self, path: &PathBuf) -> Option<PathBuf> {
-        let file_stem = path.file_stem()?.to_string_lossy();
-        let ext = path.extension()?.to_string_lossy();
-        let ts: String = Zoned::now().strftime("%Y-%m-%d at %I_%M_%S %p").to_string();
-        let backup_filename = format!("{file_stem}_{ts}.{ext}");
+        let filename = path.file_name().unwrap().to_string_lossy();
+        let ts: String = Zoned::now().strftime("%Y-%m-%d %I.%M.%S %p").to_string();
+        let backup_filename = format!("{ts} {filename}");
 
         Some(self.backup_dir.join(&backup_filename))
     }
@@ -103,16 +113,18 @@ impl WatcherBackupHandler {
             }
 
             let mut src = result.unwrap();
-            let mut dst = fs::File::create(&backup_path).expect("unable to create backup file");
+            let mut dst = File::create(&backup_path).expect("unable to create backup file");
             io::copy(&mut src, &mut dst).expect("failed to copy file contents");
             break;
         }
+
         if self.verify_bnd4 {
             self.verify(&backup_path)
                 .expect("backup file appears corrupt!");
         }
 
         info!("backed up file: {:?}", path);
+        self.prune();
         Some(backup_path)
     }
 
@@ -130,6 +142,48 @@ impl WatcherBackupHandler {
 
         info!("integrity check passed: {:?}", path);
         Ok(())
+    }
+
+    pub fn prune(&self) {
+        let duration = match &self.retention_duration {
+            Some(d) => d,
+            None => {
+                info!("not pruning, retention_duration is not set");
+                return;
+            }
+        };
+
+        let files: Vec<PathBuf> = fs::read_dir(&self.backup_dir)
+            .unwrap()
+            .map(|p| p.unwrap().path())
+            .filter(|p| p.is_file())
+            .filter(|p| match &self.backup_mask {
+                Some(pattern) => pattern.matches_path(&p),
+                None => true,
+            })
+            .collect();
+
+        info!("there are {} backups", files.len());
+        if self.min_backup_count.unwrap_or(0) > files.len() {
+            info!("there are not enough backups to start pruning");
+            return;
+        }
+
+        for file in files {
+            let age = file
+                .metadata()
+                .unwrap()
+                .modified()
+                .unwrap()
+                .elapsed()
+                .unwrap()
+                .as_secs();
+
+            if age > duration.as_secs() {
+                info!("pruning file: {:?}", file);
+                fs::remove_file(file).unwrap();
+            }
+        }
     }
 }
 

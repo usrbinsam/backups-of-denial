@@ -24,7 +24,6 @@ jobs:
 
       - name: Create Archive
         run: |
-          cd target/release
           7z a backups-of-denial-windows-x64.zip LICENSE README.md target/release/backups-of-denial.exe
 
       - name: Upload Release Asset

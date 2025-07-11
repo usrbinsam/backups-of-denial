@@ -2,10 +2,14 @@ pub mod config;
 pub mod watcher;
 
 use bnd4::{BND4Error, BND4File, CipherMode};
+use glob::Pattern;
 use jiff::Zoned;
+use log::{debug, info, warn};
 use std::fs::File;
 use std::os::windows::prelude::OpenOptionsExt;
 use std::path::PathBuf;
+use std::thread::sleep;
+use std::time::Duration;
 use std::{fs, io};
 use windows::Win32::Storage::FileSystem::{FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE};
 
@@ -15,6 +19,7 @@ pub struct WatcherBackupHandler {
     pub backup_dir: PathBuf,
     encryption_key: Option<Vec<u8>>,
     verify_bnd4: bool,
+    backup_mask: Option<Pattern>,
 }
 
 #[derive(Debug)]
@@ -25,8 +30,10 @@ pub enum VerifyError {
 impl WatcherBackupHandler {
     pub fn new(backup_dir: PathBuf, encryption_key: Option<String>, verify_bnd4: bool) -> Self {
         if !backup_dir.exists() {
-            println!("Creating backup dir: {:?}", backup_dir);
+            info!("Creating backup dir: {:?}", backup_dir);
             fs::create_dir(&backup_dir).unwrap();
+        } else {
+            info!("Creating backup files in: {:?}", backup_dir);
         }
 
         let mut decoded = None;
@@ -38,8 +45,15 @@ impl WatcherBackupHandler {
             backup_dir,
             encryption_key: decoded,
             verify_bnd4,
+            backup_mask: None,
         }
     }
+    pub fn with_mask(mut self, mask: &str) -> Self {
+        self.backup_mask = Some(Pattern::new(mask).expect("Invalid mask"));
+        info!("mask supplied, only backing up files that match: {}", mask);
+        self
+    }
+
     fn generate_backup_path(&self, path: &PathBuf) -> Option<PathBuf> {
         let file_stem = path.file_stem()?.to_string_lossy();
         let ext = path.extension()?.to_string_lossy();
@@ -54,23 +68,51 @@ impl WatcherBackupHandler {
             return None;
         }
 
+        if let Some(pattern) = &self.backup_mask {
+            debug!("Checking mask: {:?}", pattern);
+            if !pattern.matches(&path.to_string_lossy()) {
+                debug!("Path does not match mask, skipping");
+                return None;
+            }
+        }
+
         let backup_path = self.generate_backup_path(path)?;
         if backup_path.exists() {
-            panic!("the backup target already exists!")
+            warn!("the backup target already exists!");
+            return None;
         }
         // fs::copy() attempts exclusive access to the file
-        let mut src = fs::OpenOptions::new()
-            .read(true)
-            .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0)
-            .open(path)
-            .expect("unable to open file for backup");
+        let mut retry = 0;
+        loop {
+            let result = fs::OpenOptions::new()
+                .read(true)
+                .share_mode((FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0)
+                .open(path);
 
-        let mut dst = fs::File::create(&backup_path).expect("unable to create backup file");
-        io::copy(&mut src, &mut dst).expect("failed to copy file contents");
+            if result.is_err() {
+                if retry > 2000 {
+                    panic!("timed out trying to open file: {:?}", result);
+                }
+                debug!(
+                    "couldn't open file, trying again in 100ms: {:?}",
+                    result.err().unwrap()
+                );
+                sleep(Duration::from_millis(100));
+                retry += 100;
+                continue;
+            }
+
+            let mut src = result.unwrap();
+            let mut dst = fs::File::create(&backup_path).expect("unable to create backup file");
+            io::copy(&mut src, &mut dst).expect("failed to copy file contents");
+            break;
+        }
         if self.verify_bnd4 {
             self.verify(&backup_path)
                 .expect("backup file appears corrupt!");
         }
+
+        info!("backed up file: {:?}", path);
         Some(backup_path)
     }
 
@@ -86,6 +128,7 @@ impl WatcherBackupHandler {
             }
         }
 
+        info!("integrity check passed: {:?}", path);
         Ok(())
     }
 }
@@ -93,7 +136,7 @@ impl WatcherBackupHandler {
 impl WatcherCallback for WatcherBackupHandler {
     fn handle(&mut self, events: &Vec<WatchEvent>) {
         for event in events {
-            println!("Received event: {:?}", event);
+            debug!("Received event: {:?}", event);
             match event {
                 WatchEvent::Modified(path) => {
                     if path
@@ -135,21 +178,31 @@ pub mod tests {
 
     #[test]
     fn test_backup() {
-        let tmp = env::temp_dir();
+        let i = rand::random::<u8>();
+        let tmp = env::temp_dir().join(format!("backups-of-denial-test-{}", i));
+        let backup_dir = tmp.join(format!("backups-{}", i));
+        if tmp.exists() {
+            fs::remove_dir_all(&tmp).unwrap();
+        }
+        fs::create_dir(&tmp).unwrap();
         let target = "DRAKS00005.sl2";
         let test_path = &tmp.join(target);
         let target_contents = "If I could only be so grossly incandescent!";
         fs::write(test_path, target_contents).expect("failed to write to test file");
 
-        let watcher = WatcherBackupHandler::new(tmp, None, false);
+        let watcher = WatcherBackupHandler::new(backup_dir.clone(), None, false).with_mask("*.sl2");
+        assert!(watcher.backup_mask.is_some());
         watcher.backup(test_path);
 
         let found = fs::read_dir(&watcher.backup_dir.canonicalize().unwrap())
             .unwrap()
             .map(|p| p.unwrap().path())
-            .filter(|p| p.to_string_lossy().contains(target))
+            .filter(|p| p.to_string_lossy().contains("DRAKS00005"))
             .next()
-            .expect("backup file doesn't exist in the expected location");
+            .expect(&format!(
+                "backup file doesn't exist in backup dir: {}",
+                backup_dir.to_string_lossy()
+            ));
 
         let contents = fs::read_to_string(found).unwrap();
         assert_eq!(contents, target_contents);

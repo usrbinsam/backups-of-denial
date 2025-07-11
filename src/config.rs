@@ -9,6 +9,7 @@ pub struct Config {
     pub save_game_dir: String,
     pub encryption_key: Option<String>,
     pub verify_bnd4: bool,
+    pub backup_mask: String,
 }
 
 impl Config {

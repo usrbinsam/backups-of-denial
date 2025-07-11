@@ -140,6 +140,10 @@ pub mod tests {
     #[test]
     fn test_win32_watch() {
         let tmp = std::env::temp_dir().join("BackupsOfDenial");
+        if tmp.exists() {
+            fs::remove_dir_all(&tmp).expect("unable to remove temp dir");
+        }
+        fs::create_dir(&tmp).expect("unable to create temp dir");
         let test_file = tmp.join("foo.txt");
         let test_content = "if i could only be so grossly incandescent ...\n";
         fs::write(&test_file, &test_content).expect("unable to write test file");

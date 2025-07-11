@@ -18,6 +18,7 @@ backup_dir = '''\path\for\backup\storage'''
 save_game_dir = '''C:\Users\YOUR USERNAME\OneDrive\Documents\NBGI\DARK SOULS REMASTERED'''
 verify_bnd4 = true # verify backup file integrity
 decryption_key = '0123456789ABCDEFFEDCBA9876543210' # Dark Souls Remastered key, only required if verify_bnd4 = true.
+backup_mask = '*.sl2' # or '*.sl2.overhaul' if using PVP Overhaul Mod
 ```
 
 - Start the executable: `backups-of-denial.exe`
